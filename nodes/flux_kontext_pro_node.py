@@ -80,7 +80,7 @@ class FluxKontextProNode:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "image_path")
     FUNCTION = "generate_image"
-    CATEGORY = "image/generation"
+    CATEGORY = "JM-FLUX-API/FLUX-KONTEXT-PRO"
     
     def encode_image_to_base64(self, image: torch.Tensor) -> str:
         """
