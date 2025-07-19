@@ -124,35 +124,69 @@ class FluxKontextProNode:
         except requests.exceptions.RequestException as e:
             raise Exception(f"创建任务失败: {str(e)}")
     
-    def get_result(self, task_id: str) -> Dict[str, Any]:
+    def get_result(self, task_id: str, max_retries: int = 3) -> Dict[str, Any]:
         """
-        获取任务结果
+        获取任务结果，带重试机制
         """
         url = f"{self.api_base_url}/get_result?id={task_id}"
         
-        try:
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"获取结果失败: {str(e)}")
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    # 404错误可能是任务还没有被完全注册，稍等重试
+                    if attempt < max_retries - 1:
+                        print(f"任务暂未找到(404)，等待5秒后重试 ({attempt + 1}/{max_retries})...")
+                        time.sleep(5)
+                        continue
+                    else:
+                        raise Exception(f"任务未找到，已重试{max_retries}次，可能任务ID无效或已过期")
+                else:
+                    raise Exception(f"获取结果失败: {str(e)}")
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    print(f"网络错误，等待3秒后重试 ({attempt + 1}/{max_retries}): {str(e)}")
+                    time.sleep(3)
+                    continue
+                else:
+                    raise Exception(f"获取结果失败: {str(e)}")
+        
+        raise Exception("获取任务结果失败，已达到最大重试次数")
     
-    def wait_for_completion(self, task_id: str, max_wait_time: int = 300, poll_interval: int = 5) -> Dict[str, Any]:
+    def wait_for_completion(self, task_id: str, max_wait_time: int = 300, poll_interval: int = 10) -> Dict[str, Any]:
         """
-        等待任务完成
+        等待任务完成，带初始延迟和智能重试
         """
         start_time = time.time()
         
+        # 初始等待10秒，让服务器完全注册任务
+        print(f"任务已提交，等待10秒让服务器处理...")
+        time.sleep(10)
+        
         while time.time() - start_time < max_wait_time:
-            result = self.get_result(task_id)
-            
-            if result.get("status") == "Ready":
-                return result
-            elif result.get("status") in ["Failed", "Error"]:
-                raise Exception(f"任务失败: {result.get('details', '未知错误')}")
-            
-            print(f"任务状态: {result.get('status', 'Unknown')}, 等待中...")
-            time.sleep(poll_interval)
+            try:
+                result = self.get_result(task_id)
+                
+                if result.get("status") == "Ready":
+                    print(f"任务完成! 耗时: {time.time() - start_time:.1f}秒")
+                    return result
+                elif result.get("status") in ["Failed", "Error"]:
+                    raise Exception(f"任务失败: {result.get('details', '未知错误')}")
+                
+                print(f"任务状态: {result.get('status', 'Unknown')}, 继续等待...")
+                time.sleep(poll_interval)
+                
+            except Exception as e:
+                # 如果是404错误且还在等待时间内，继续重试
+                if "任务未找到" in str(e) and time.time() - start_time < 60:
+                    print(f"任务暂未就绪，继续等待...")
+                    time.sleep(poll_interval)
+                    continue
+                else:
+                    raise e
         
         raise Exception(f"任务超时，等待时间超过{max_wait_time}秒")
     
@@ -264,7 +298,7 @@ class FluxKontextProNode:
             raise Exception("创建任务失败，未获取到任务ID")
         
         print(f"任务已创建，ID: {task_id}")
-        print(f"等待任务完成...")
+        print(f"开始等待任务完成（初始延迟10秒，然后每10秒查询一次状态）...")
         
         # 等待任务完成
         result = self.wait_for_completion(task_id)
