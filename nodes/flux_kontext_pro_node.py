@@ -86,9 +86,19 @@ class FluxKontextProNode:
         """
         将ComfyUI的图片张量转换为base64编码
         """
-        # 转换张量为PIL图片
-        i = 255. * image.cpu().numpy()
-        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+        # ComfyUI的图片张量格式: [batch_size, height, width, channels]
+        # 取第一个batch
+        if len(image.shape) == 4:
+            img_array = image[0].cpu().numpy()  # 去掉batch维度: [height, width, channels]
+        else:
+            img_array = image.cpu().numpy()
+        
+        # 确保值在0-1范围内，然后转换为0-255
+        img_array = np.clip(img_array, 0.0, 1.0)
+        img_array = (img_array * 255).astype(np.uint8)
+        
+        # 转换为PIL图片
+        img = Image.fromarray(img_array)
         
         # 转换为base64
         buffer = io.BytesIO()
