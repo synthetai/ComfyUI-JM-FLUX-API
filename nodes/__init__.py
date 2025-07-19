@@ -1,0 +1,21 @@
+"""
+ComfyUI-JM-FLUX-API Nodes
+All custom nodes for FLUX API integration
+"""
+
+from .flux_kontext_pro_node import NODE_CLASS_MAPPINGS as FLUX_KONTEXT_PRO_MAPPINGS
+from .flux_kontext_pro_node import NODE_DISPLAY_NAME_MAPPINGS as FLUX_KONTEXT_PRO_DISPLAY_MAPPINGS
+
+# 汇总所有节点的映射
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
+
+# 添加Flux Kontext Pro节点
+NODE_CLASS_MAPPINGS.update(FLUX_KONTEXT_PRO_MAPPINGS)
+NODE_DISPLAY_NAME_MAPPINGS.update(FLUX_KONTEXT_PRO_DISPLAY_MAPPINGS)
+
+# 导出所有映射
+__all__ = [
+    'NODE_CLASS_MAPPINGS', 
+    'NODE_DISPLAY_NAME_MAPPINGS'
+] 
