@@ -210,7 +210,8 @@ class FluxKontextProNode:
                     print(f"   原始任务ID: '{task_id}'")
                     print(f"   任务ID类型: {type(task_id)}")
                     print(f"   任务ID长度: {len(str(task_id))}")
-                    print(f"   是否包含特殊字符: {any(c in task_id for c in [' ', '\n', '\t', '\r'])}")
+                    special_chars = [' ', '\n', '\t', '\r']
+                    print(f"   是否包含特殊字符: {any(c in task_id for c in special_chars)}")
                     
                 response.raise_for_status()
                 
