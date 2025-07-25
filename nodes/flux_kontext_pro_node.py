@@ -117,11 +117,62 @@ class FluxKontextProNode:
         
         url = f"{self.api_base_url}/flux-kontext-pro"
         
+        # Debug日志: 记录请求信息
+        print("=" * 60)
+        print("🚀 [DEBUG] 创建任务 - 请求信息:")
+        print(f"   📍 URL: {url}")
+        print(f"   🔑 API Key (前8位): {api_key[:8]}..." if api_key else "   🔑 API Key: None")
+        print(f"   📝 Headers: {headers}")
+        
+        # 安全地记录payload（排除可能很大的base64图片数据）
+        safe_payload = payload.copy()
+        if 'input_image' in safe_payload:
+            if safe_payload['input_image'].startswith('data:') or len(safe_payload['input_image']) > 100:
+                safe_payload['input_image'] = f"[Base64 Image Data - {len(safe_payload['input_image'])} chars]"
+        print(f"   📦 Payload: {json.dumps(safe_payload, indent=2, ensure_ascii=False)}")
+        print("=" * 60)
+        
         try:
+            print("⏳ [DEBUG] 正在发送请求到FLUX API...")
+            start_time = time.time()
+            
             response = requests.post(url, headers=headers, json=payload, timeout=30)
+            
+            request_time = time.time() - start_time
+            print(f"⏱️ [DEBUG] 请求耗时: {request_time:.2f}秒")
+            print(f"📊 [DEBUG] HTTP状态码: {response.status_code}")
+            print(f"📋 [DEBUG] 响应头: {dict(response.headers)}")
+            
+            # 记录响应内容
+            try:
+                response_data = response.json()
+                print("✅ [DEBUG] 响应数据:")
+                print(json.dumps(response_data, indent=2, ensure_ascii=False))
+            except json.JSONDecodeError:
+                print("❌ [DEBUG] 响应不是有效的JSON:")
+                print(f"响应文本: {response.text}")
+            
             response.raise_for_status()
-            return response.json()
+            
+            # 验证响应数据
+            if 'id' not in response_data:
+                print("⚠️ [DEBUG] 警告: 响应中没有找到 'id' 字段")
+                print(f"响应键: {list(response_data.keys())}")
+            else:
+                task_id = response_data['id']
+                print(f"🎯 [DEBUG] 成功获取任务ID: {task_id}")
+                print(f"🔍 [DEBUG] 任务ID类型: {type(task_id)}")
+                print(f"📏 [DEBUG] 任务ID长度: {len(str(task_id))}")
+            
+            return response_data
+            
         except requests.exceptions.RequestException as e:
+            print(f"❌ [DEBUG] 请求异常:")
+            print(f"   异常类型: {type(e).__name__}")
+            print(f"   异常信息: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"   HTTP状态码: {e.response.status_code}")
+                print(f"   响应文本: {e.response.text}")
             raise Exception(f"创建任务失败: {str(e)}")
     
     def get_result(self, task_id: str, max_retries: int = 3) -> Dict[str, Any]:
@@ -130,28 +181,77 @@ class FluxKontextProNode:
         """
         url = f"{self.api_base_url}/get_result?id={task_id}"
         
+        print("=" * 60)
+        print(f"🔍 [DEBUG] 查询任务结果:")
+        print(f"   📍 查询URL: {url}")
+        print(f"   🎯 任务ID: {task_id}")
+        print(f"   🔄 最大重试次数: {max_retries}")
+        print("=" * 60)
+        
         for attempt in range(max_retries):
             try:
+                print(f"📡 [DEBUG] 第 {attempt + 1} 次查询尝试...")
+                start_time = time.time()
+                
                 response = requests.get(url, timeout=30)
+                
+                request_time = time.time() - start_time
+                print(f"⏱️ [DEBUG] 查询耗时: {request_time:.2f}秒")
+                print(f"📊 [DEBUG] HTTP状态码: {response.status_code}")
+                
+                if response.status_code == 404:
+                    print("🔍 [DEBUG] 收到404响应:")
+                    print(f"   响应头: {dict(response.headers)}")
+                    print(f"   响应文本: {response.text}")
+                    print(f"   完整查询URL: {url}")
+                    
+                    # 检查任务ID格式
+                    print(f"🔎 [DEBUG] 任务ID详细信息:")
+                    print(f"   原始任务ID: '{task_id}'")
+                    print(f"   任务ID类型: {type(task_id)}")
+                    print(f"   任务ID长度: {len(str(task_id))}")
+                    print(f"   是否包含特殊字符: {any(c in task_id for c in [' ', '\n', '\t', '\r'])}")
+                    
                 response.raise_for_status()
-                return response.json()
+                
+                # 记录成功响应
+                try:
+                    response_data = response.json()
+                    print("✅ [DEBUG] 查询成功，响应数据:")
+                    print(json.dumps(response_data, indent=2, ensure_ascii=False))
+                    return response_data
+                except json.JSONDecodeError:
+                    print("❌ [DEBUG] 响应不是有效的JSON:")
+                    print(f"响应文本: {response.text}")
+                    raise Exception("服务器返回的不是有效的JSON响应")
+                
             except requests.exceptions.HTTPError as e:
                 if e.response.status_code == 404:
                     # 404错误可能是任务还没有被完全注册，稍等重试
                     if attempt < max_retries - 1:
-                        print(f"任务暂未找到(404)，等待5秒后重试 ({attempt + 1}/{max_retries})...")
-                        time.sleep(5)
+                        wait_time = 5
+                        print(f"⏳ [DEBUG] 任务暂未找到(404)，等待{wait_time}秒后重试 ({attempt + 1}/{max_retries})...")
+                        time.sleep(wait_time)
                         continue
                     else:
+                        print(f"❌ [DEBUG] 已重试{max_retries}次仍然404，可能的原因:")
+                        print(f"   1. 任务ID无效或格式错误")
+                        print(f"   2. 任务已过期或被清理")
+                        print(f"   3. API服务器内部问题")
+                        print(f"   4. 网络或DNS解析问题")
                         raise Exception(f"任务未找到，已重试{max_retries}次，可能任务ID无效或已过期")
                 else:
+                    print(f"❌ [DEBUG] HTTP错误 {e.response.status_code}:")
+                    print(f"   响应文本: {e.response.text}")
                     raise Exception(f"获取结果失败: {str(e)}")
             except requests.exceptions.RequestException as e:
                 if attempt < max_retries - 1:
-                    print(f"网络错误，等待3秒后重试 ({attempt + 1}/{max_retries}): {str(e)}")
-                    time.sleep(3)
+                    wait_time = 3
+                    print(f"🔄 [DEBUG] 网络错误，等待{wait_time}秒后重试 ({attempt + 1}/{max_retries}): {str(e)}")
+                    time.sleep(wait_time)
                     continue
                 else:
+                    print(f"❌ [DEBUG] 网络错误，已达到最大重试次数: {str(e)}")
                     raise Exception(f"获取结果失败: {str(e)}")
         
         raise Exception("获取任务结果失败，已达到最大重试次数")
@@ -162,32 +262,60 @@ class FluxKontextProNode:
         """
         start_time = time.time()
         
-        # 初始等待10秒，让服务器完全注册任务
-        print(f"任务已提交，等待10秒让服务器处理...")
-        time.sleep(10)
+        print("=" * 60)
+        print(f"⏳ [DEBUG] 开始等待任务完成:")
+        print(f"   🎯 任务ID: {task_id}")
+        print(f"   ⏱️ 最大等待时间: {max_wait_time}秒")
+        print(f"   🔄 轮询间隔: {poll_interval}秒")
+        print("=" * 60)
         
+        # 初始等待10秒，让服务器完全注册任务
+        initial_wait = 10
+        print(f"⏰ [DEBUG] 初始等待{initial_wait}秒，让服务器完全注册任务...")
+        time.sleep(initial_wait)
+        
+        poll_count = 0
         while time.time() - start_time < max_wait_time:
+            poll_count += 1
+            elapsed_time = time.time() - start_time
+            
+            print(f"🔍 [DEBUG] 第{poll_count}次轮询 (已等待 {elapsed_time:.1f}秒)...")
+            
             try:
                 result = self.get_result(task_id)
                 
-                if result.get("status") == "Ready":
-                    print(f"任务完成! 耗时: {time.time() - start_time:.1f}秒")
-                    return result
-                elif result.get("status") in ["Failed", "Error"]:
-                    raise Exception(f"任务失败: {result.get('details', '未知错误')}")
+                status = result.get("status")
+                print(f"📊 [DEBUG] 任务状态: {status}")
                 
-                print(f"任务状态: {result.get('status', 'Unknown')}, 继续等待...")
+                if status == "Ready":
+                    total_time = time.time() - start_time
+                    print(f"🎉 [DEBUG] 任务完成! 总耗时: {total_time:.1f}秒")
+                    return result
+                elif status in ["Failed", "Error"]:
+                    error_details = result.get('details', '未知错误')
+                    print(f"❌ [DEBUG] 任务失败:")
+                    print(f"   状态: {status}")
+                    print(f"   详细信息: {error_details}")
+                    raise Exception(f"任务失败: {error_details}")
+                else:
+                    print(f"⏳ [DEBUG] 任务仍在处理中，状态: {status}")
+                
+                print(f"💤 [DEBUG] 等待{poll_interval}秒后进行下次轮询...")
                 time.sleep(poll_interval)
                 
             except Exception as e:
+                error_msg = str(e)
                 # 如果是404错误且还在等待时间内，继续重试
-                if "任务未找到" in str(e) and time.time() - start_time < 60:
-                    print(f"任务暂未就绪，继续等待...")
+                if "任务未找到" in error_msg and time.time() - start_time < 60:
+                    print(f"🔄 [DEBUG] 任务暂未就绪，继续等待... (错误: {error_msg})")
                     time.sleep(poll_interval)
                     continue
                 else:
+                    print(f"❌ [DEBUG] 轮询过程中发生错误: {error_msg}")
                     raise e
         
+        total_wait_time = time.time() - start_time
+        print(f"⏰ [DEBUG] 任务超时，总等待时间: {total_wait_time:.1f}秒")
         raise Exception(f"任务超时，等待时间超过{max_wait_time}秒")
     
     def download_image(self, image_url: str, save_path: str) -> None:
